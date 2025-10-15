@@ -1,29 +1,48 @@
 import express from "express";
-import mongoose from "mongoose";
 import dotenv from "dotenv";
+import cors from "cors";
 
-dotenv.config(); // <- ОБОВ’ЯЗКОВО перед використанням process.env
+import { connectMongoDB } from "./db/connectMongoDB.js";
+import { logger } from "./middleware/logger.js";
+import { notFoundHandler } from "./middleware/notFoundHandler.js";
+import { errorHandler } from "./middleware/errorHandler.js";
+import notesRouter from "./routes/notesRouter.js";
 
-const app = express();
-app.use(express.json());
+dotenv.config();
 
-const { PORT = 3000, MONGODB_URI } = process.env;
-
-console.log("MONGODB_URI:", MONGODB_URI); // 🔍 тимчасово виводимо для перевірки
+const PORT = process.env.PORT || 3030;
+const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
-  console.error("❌ MONGODB_URI is missing in .env file");
+  console.error("❌ Missing MONGODB_URI in .env file");
   process.exit(1);
 }
 
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log("✅ Connected to MongoDB"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+const app = express();
 
-app.get("/", (req, res) => {
-  res.send("Hello from MongoDB project!");
-});
+// --- Middleware ---
+app.use(cors());
+app.use(express.json());
+app.use(logger);
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// --- Routes ---
+app.use("/api/notes", notesRouter);
+
+// --- Handlers ---
+app.use(notFoundHandler);
+app.use(errorHandler);
+
+// --- Connect to DB and start server ---
+const startServer = async () => {
+  try {
+    await connectMongoDB(MONGODB_URI);
+    app.listen(PORT, () => {
+      console.log(`✅ Server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error("❌ MongoDB connection failed:", err.message);
+    process.exit(1);
+  }
+};
+
+startServer();
