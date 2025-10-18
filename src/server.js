@@ -1,45 +1,37 @@
-'use strict';
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import { logger } from "./middleware/logger.js";
+import { notFoundHandler } from "./middleware/notFoundHandler.js";
+import { errorHandler } from "./middleware/errorHandler.js";
+import notesRouter from "./routes/notesRoutes.js";
+import { connectMongoDB } from "./db/connectMongoDB.js";
 
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const pinoHttp = require('pino-http');
+dotenv.config();
 
 const app = express();
 
-// Middleware
-app.use(pinoHttp());
+app.use(logger);
 app.use(cors());
 app.use(express.json());
 
-// Routes
-app.get('/notes', (req, res) => {
-  res.status(200).json({ message: 'Retrieved all notes' });
-});
+app.use(notesRouter);
 
-app.get('/notes/:noteId', (req, res) => {
-  const { noteId } = req.params;
-  res.status(200).json({ message: `Retrieved note with ID: ${noteId}` });
-});
+app.use(notFoundHandler);
+app.use(errorHandler);
 
-app.get('/test-error', () => {
-  throw new Error('Simulated server error');
-});
+const PORT = process.env.PORT || 3030;
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
-});
+const startServer = async () => {
+  try {
+    await connectMongoDB();
+    app.listen(PORT, () => {
+      console.log(`✅ Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("❌ MongoDB connection error:", error);
+    process.exit(1);
+  }
+};
 
-// Error handler
-app.use((err, req, res, next) => {
-  if (req?.log?.error) req.log.error({ err }, 'Internal server error');
-  else console.error(err);
-  res.status(500).json({ message: err.message });
-});
-
-// Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(` Server running on port ${PORT}`);
-});
+startServer();
