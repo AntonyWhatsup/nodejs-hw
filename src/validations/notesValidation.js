@@ -1,9 +1,9 @@
-import { Joi, celebrate, Segments } from 'celebrate';
+import { celebrate, Joi, Segments } from 'celebrate';
+import { isValidObjectId } from 'mongoose';
 import { TAGS } from '../constants/tags.js';
-import mongoose from 'mongoose';
 
-const isValidObjectId = (value, helpers) => {
-  if (!mongoose.isValidObjectId(value)) {
+const objectIdValidator = (value, helpers) => {
+  if (!isValidObjectId(value)) {
     return helpers.error('any.invalid');
   }
   return value;
@@ -20,7 +20,7 @@ export const getAllNotesSchema = celebrate({
 
 export const noteIdSchema = celebrate({
   [Segments.PARAMS]: Joi.object({
-    noteId: Joi.string().custom(isValidObjectId, 'ObjectId validation'),
+    noteId: Joi.string().custom(objectIdValidator, 'ObjectId validation').required(),
   }),
 });
 
@@ -28,17 +28,17 @@ export const createNoteSchema = celebrate({
   [Segments.BODY]: Joi.object({
     title: Joi.string().min(1).required(),
     content: Joi.string().allow(''),
-    tag: Joi.string().valid(...TAGS).required(),
+    tag: Joi.string().valid(...TAGS), // зроблено необов’язковим
   }),
 });
 
 export const updateNoteSchema = celebrate({
   [Segments.PARAMS]: Joi.object({
-    noteId: Joi.string().custom(isValidObjectId, 'ObjectId validation'),
+    noteId: Joi.string().custom(objectIdValidator, 'ObjectId validation').required(),
   }),
   [Segments.BODY]: Joi.object({
     title: Joi.string().min(1),
     content: Joi.string().allow(''),
     tag: Joi.string().valid(...TAGS),
-  }),
+  }).or('title', 'content', 'tag'), // принаймні одне поле обов’язкове
 });
