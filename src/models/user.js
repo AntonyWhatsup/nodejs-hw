@@ -1,23 +1,29 @@
-import { Schema, model } from 'mongoose';
+import mongoose from 'mongoose';
+import bcrypt from 'bcrypt';
 
-const userSchema = new Schema(
-  {
-    username: { type: String, trim: true },
-    email: { type: String, required: true, unique: true, trim: true },
-    password: { type: String, required: true },
+const userSchema = new mongoose.Schema({
+  username: { type: String, trim: true },
+  email: { type: String, required: true, unique: true, trim: true },
+  password: { type: String, required: true },
+  avatar: {
+    type: String,
+    default: 'https://ac.goit.global/fullstack/react/default-avatar.jpg'
   },
-  { timestamps: true }
-);
+}, { timestamps: true });
 
-userSchema.pre('save', function (next) {
+userSchema.pre('save', async function (next) {
   if (!this.username) this.username = this.email;
+  if (this.isModified('password')) {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+  }
   next();
 });
 
 userSchema.methods.toJSON = function () {
-  const user = this.toObject();
-  delete user.password;
-  return user;
+  const obj = this.toObject();
+  delete obj.password;
+  return obj;
 };
 
-export const User = model('User', userSchema);
+export const User = mongoose.model('User', userSchema);

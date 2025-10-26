@@ -1,78 +1,64 @@
 import createHttpError from 'http-errors';
-import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { User } from '../models/user.js';
-import { Session } from '../models/session.js';
+import { sendEmail } from '../utils/sendMail.js';
 import { createSession, setSessionCookies } from '../services/auth.js';
+import bcrypt from 'bcrypt';
+import dotenv from 'dotenv';
 
-export const registerUser = async (req, res, next) => {
+dotenv.config();
+const { JWT_SECRET, FRONTEND_DOMAIN } = process.env;
+
+export const requestResetEmail = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
-    const existing = await User.findOne({ email });
-    if (existing) throw createHttpError(400, 'Email in use');
-
-    const hash = await bcrypt.hash(password, 10);
-    const user = await User.create({ email, password: hash });
-
-    const session = await createSession(user._id);
-    setSessionCookies(res, session);
-
-    res.status(201).json(user);
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const loginUser = async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
+    const { email } = req.body;
     const user = await User.findOne({ email });
-    if (!user) throw createHttpError(401, 'Invalid credentials');
 
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) throw createHttpError(401, 'Invalid credentials');
+    // якщо немає користувача — все одно відповідаємо 200 (щоб не зливати перелік емейлів)
+    if (!user) {
+      return res.status(200).json({ message: 'Password reset email sent successfully' });
+    }
 
-    await Session.deleteMany({ userId: user._id });
+    const token = jwt.sign({ sub: user._id.toString(), email: user.email }, JWT_SECRET, { expiresIn: '15m' });
 
-    const session = await createSession(user._id);
-    setSessionCookies(res, session);
+    const resetLink = `${FRONTEND_DOMAIN.replace(/\/$/, '')}/reset-password?token=${token}`;
 
-    res.status(200).json(user);
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: 'Password reset',
+        templateName: 'reset-password-email',
+        templateData: { username: user.username || user.email, resetLink }
+      });
+    } catch (err) {
+      return next(createHttpError(500, 'Failed to send the email, please try again later.'));
+    }
+
+    res.status(200).json({ message: 'Password reset email sent successfully' });
   } catch (err) {
     next(err);
   }
 };
 
-export const refreshUserSession = async (req, res, next) => {
+export const resetPassword = async (req, res, next) => {
   try {
-    const { sessionId, refreshToken } = req.cookies;
+    const { token, password } = req.body;
+    let payload;
+    try {
+      payload = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      return next(createHttpError(401, 'Invalid or expired token'));
+    }
 
-    const session = await Session.findOne({ _id: sessionId, refreshToken });
-    if (!session) throw createHttpError(401, 'Session not found');
+    const { sub: userId, email } = payload;
+    const user = await User.findOne({ _id: userId, email });
+    if (!user) return next(createHttpError(404, 'User not found'));
 
-    if (session.refreshTokenValidUntil < new Date())
-      throw createHttpError(401, 'Session token expired');
+    // оновити пароль (pre('save') у моделі зробить хешування)
+    user.password = password;
+    await user.save();
 
-    await Session.deleteOne({ _id: sessionId });
-
-    const newSession = await createSession(session.userId);
-    setSessionCookies(res, newSession);
-
-    res.status(200).json({ message: 'Session refreshed' });
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const logoutUser = async (req, res, next) => {
-  try {
-    const { sessionId } = req.cookies;
-    if (sessionId) await Session.deleteOne({ _id: sessionId });
-
-    res.clearCookie('accessToken');
-    res.clearCookie('refreshToken');
-    res.clearCookie('sessionId');
-
-    res.status(204).end();
+    res.status(200).json({ message: 'Password reset successfully' });
   } catch (err) {
     next(err);
   }
