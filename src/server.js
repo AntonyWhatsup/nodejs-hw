@@ -1,43 +1,45 @@
 import express from 'express';
-import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 import cors from 'cors';
-import notesRouter from './routes/notesRoutes.js';
+import cookieParser from 'cookie-parser';
+import dotenv from 'dotenv';
 import { errors } from 'celebrate';
 
+import { logger } from './middleware/logger.js';
+import { notFoundHandler } from './middleware/notFoundHandler.js';
+import { errorHandler } from './middleware/errorHandler.js';
+import { connectMongoDB } from './db/connectMongoDB.js';
+
+import notesRouter from './routes/notesRoutes.js';
+import authRouter from './routes/authRoutes.js';
+
 dotenv.config();
+
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
+app.use(logger);
 
-app.use('/api', notesRouter);
+app.use('/notes', notesRouter);
+app.use('/auth', authRouter);
 
-// обробник неіснуючих маршрутів
-app.use((req, res) => {
-  res.status(404).json({ message: 'Not found' });
-});
-
-// middleware errors з celebrate (має бути перед обробником помилок)
+app.use(notFoundHandler);
 app.use(errors());
+app.use(errorHandler);
 
-// обробник помилок
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(err.status || 500).json({
-    message: err.message || 'Server error',
-  });
-});
+const PORT = process.env.PORT || 3030;
 
-const { MONGO_URL, PORT = 3000 } = process.env;
-
-mongoose
-  .connect(MONGO_URL)
-  .then(() => {
-    console.log('Database connection successful');
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-  })
-  .catch(error => {
-    console.error('Database connection failed:', error.message);
+const startServer = async () => {
+  try {
+    await connectMongoDB();
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error('MongoDB connection failed:', error.message);
     process.exit(1);
-  });
+  }
+};
+
+startServer();
