@@ -5,11 +5,14 @@ const noteSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: [true, 'Title is required'],
+      required: true,
+      trim: true, 
     },
     content: {
       type: String,
-      required: [true, 'Content is required'],
+      required: false, 
+      default: '', 
+      trim: true, 
     },
     tag: {
       type: String,
@@ -19,13 +22,15 @@ const noteSchema = new mongoose.Schema(
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: [true, 'User ID is required'],
+      required: true, 
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-// Текстовий індекс створюємо ДО створення моделі
+
 noteSchema.index({ title: 'text', content: 'text' });
 
 export const Note = mongoose.model('Note', noteSchema);

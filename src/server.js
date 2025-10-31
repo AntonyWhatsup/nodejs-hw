@@ -1,45 +1,42 @@
 import express from 'express';
+import dotenv from 'dotenv';
+import mongoose from 'mongoose';
+import morgan from 'morgan';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import dotenv from 'dotenv';
-import { errors } from 'celebrate';
-
-import { logger } from './middleware/logger.js';
-import { notFoundHandler } from './middleware/notFoundHandler.js';
-import { errorHandler } from './middleware/errorHandler.js';
-import { connectMongoDB } from './db/connectMongoDB.js';
 
 import notesRouter from './routes/notesRoutes.js';
 import authRouter from './routes/authRoutes.js';
+import { errorHandler } from './middlewares/errorHandler.js';
 
 dotenv.config();
 
 const app = express();
 
-app.use(cors());
+app.use(morgan('dev'));
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
-app.use(logger);
 
-app.use('/notes', notesRouter);
-app.use('/auth', authRouter);
+// ✅ Реєструємо роутери БЕЗ префіксів
+app.use(notesRouter);
+app.use(authRouter);
 
-app.use(notFoundHandler);
-app.use(errors());
+// ✅ Мідлвар для обробки помилок — після усіх маршрутів
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3030;
+const PORT = process.env.PORT || 3000;
+const MONGO_URI = process.env.MONGO_URI;
 
-const startServer = async () => {
-  try {
-    await connectMongoDB();
+mongoose
+  .connect(MONGO_URI)
+  .then(() => {
+    console.log('✅ Connected to MongoDB');
     app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+      console.log(`🚀 Server running on port ${PORT}`);
     });
-  } catch (error) {
-    console.error('MongoDB connection failed:', error.message);
+  })
+  .catch((err) => {
+    console.error('❌ MongoDB connection error:', err.message);
     process.exit(1);
-  }
-};
-
-startServer();
+  });
