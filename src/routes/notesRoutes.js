@@ -11,7 +11,7 @@ import {
   createNoteSchema,
   updateNoteSchema,
   noteIdSchema,
-} from '../validation/notesSchemas.js';
+} from '../validations/notesSchemas.js';
 import { authenticate } from '../middleware/authenticate.js';
 
 
