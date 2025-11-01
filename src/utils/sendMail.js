@@ -1,8 +1,5 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
-import fs from 'fs';
-import path from 'path';
-import handlebars from 'handlebars';
 
 dotenv.config();
 
@@ -14,7 +11,7 @@ const {
   SMTP_FROM,
 } = process.env;
 
-// створюємо транспорт
+// ✅ Створюємо транспорт для надсилання пошти
 const transporter = nodemailer.createTransport({
   host: SMTP_HOST,
   port: Number(SMTP_PORT),
@@ -26,24 +23,16 @@ const transporter = nodemailer.createTransport({
 });
 
 /**
- * Надсилає email з шаблону HTML.
- * @param {Object} options
- * @param {string} options.to - отримувач
- * @param {string} options.subject - тема листа
- * @param {string} options.templateName - назва html-шаблону (без .html)
- * @param {Object} options.templateData - дані для шаблону
+ * Універсальна функція для надсилання електронних листів.
+ * Приймає стандартні параметри nodemailer (to, subject, text, html, attachments тощо).
+ *
+ * @param {Object} options - параметри для nodemailer.sendMail
+ * @returns {Promise<Object>} результат відправлення
  */
-export const sendEmail = async ({ to, subject, templateName, templateData }) => {
-  const templatePath = path.resolve(`src/templates/${templateName}.html`);
-  const source = fs.readFileSync(templatePath, 'utf8');
-  const compiled = handlebars.compile(source);
-  const html = compiled(templateData);
-
+export const sendEmail = async (options) => {
   const mailOptions = {
-    from: SMTP_FROM,
-    to,
-    subject,
-    html,
+    from: SMTP_FROM || SMTP_USER,
+    ...options,
   };
 
   return transporter.sendMail(mailOptions);

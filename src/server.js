@@ -1,37 +1,37 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import cookieParser from 'cookie-parser'; 
-import mongoose from 'mongoose';
-import {logger} from './middleware/logger.js';
+import cookieParser from 'cookie-parser';
+import { connectMongoDB } from './db/connectMongoDB.js';
+import { logger } from './middleware/logger.js';
+import { notFoundHandler } from './middleware/notFoundHandler.js';
+import { errorHandler } from './middleware/errorHandler.js';
+import { errors } from 'celebrate';
 import authRouter from './routes/authRoutes.js';
 import userRouter from './routes/userRoutes.js';
 import notesRouter from './routes/notesRoutes.js';
-import {notFoundHandler} from './middleware/notFoundHandler.js';
-import { errorHandler } from './middleware/errorHandler.js';
-import { errors } from 'celebrate';
-import { connectMongoDB } from './db/connectMongoDB.js';
 
 dotenv.config();
 
 const app = express();
 
+// --- Middleware ---
 app.use(cors());
 app.use(express.json());
-app.use(logger);
 app.use(cookieParser());
+app.use(logger);
 
-
+// --- Routes ---
 app.use(authRouter);
 app.use(userRouter);
 app.use(notesRouter);
 
-
+// --- Error handlers ---
 app.use(notFoundHandler);
 app.use(errors());
 app.use(errorHandler);
 
-
+// --- Start server ---
 const startServer = async () => {
   try {
     await connectMongoDB();
