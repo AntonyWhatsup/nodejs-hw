@@ -7,7 +7,7 @@ import cookieParser from 'cookie-parser';
 
 import notesRouter from './routes/notesRoutes.js';
 import authRouter from './routes/authRoutes.js';
-import { errorHandler } from './middlewares/errorHandler.js';
+import { errorHandler } from './middleware/errorHandler.js';
 
 dotenv.config();
 
