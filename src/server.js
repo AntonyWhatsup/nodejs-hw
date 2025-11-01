@@ -3,12 +3,12 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser'; 
 import mongoose from 'mongoose';
-import logger from './middleware/logger.js';
+import {logger} from './middleware/logger.js';
 import authRouter from './routes/authRoutes.js';
 import userRouter from './routes/userRoutes.js';
 import notesRouter from './routes/notesRoutes.js';
-import notFoundHandler from './middleware/notFoundHandler.js';
-import errorHandler from './middleware/errorHandler.js';
+import {notFoundHandler} from './middleware/notFoundHandler.js';
+import { errorHandler } from './middleware/errorHandler.js';
 import { errors } from 'celebrate';
 import { connectMongoDB } from './db/connectMongoDB.js';
 

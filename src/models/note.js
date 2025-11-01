@@ -13,6 +13,8 @@ const noteSchema = new Schema(
   { timestamps: true }
 );
 
+// Індекс для пошуку по тексту
 noteSchema.index({ title: 'text', content: 'text' });
 
-export const Note = model('Note', noteSchema);
+const Note = model('Note', noteSchema);
+export default Note; // default export
