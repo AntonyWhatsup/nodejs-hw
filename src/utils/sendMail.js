@@ -11,19 +11,28 @@ const {
   SMTP_PORT,
   SMTP_USER,
   SMTP_PASSWORD,
-  SMTP_FROM
+  SMTP_FROM,
 } = process.env;
 
+// створюємо транспорт
 const transporter = nodemailer.createTransport({
   host: SMTP_HOST,
   port: Number(SMTP_PORT),
-  secure: Number(SMTP_PORT) === 465, // true for 465, false for other ports
+  secure: Number(SMTP_PORT) === 465,
   auth: {
     user: SMTP_USER,
     pass: SMTP_PASSWORD,
   },
 });
 
+/**
+ * Надсилає email з шаблону HTML.
+ * @param {Object} options
+ * @param {string} options.to - отримувач
+ * @param {string} options.subject - тема листа
+ * @param {string} options.templateName - назва html-шаблону (без .html)
+ * @param {Object} options.templateData - дані для шаблону
+ */
 export const sendEmail = async ({ to, subject, templateName, templateData }) => {
   const templatePath = path.resolve(`src/templates/${templateName}.html`);
   const source = fs.readFileSync(templatePath, 'utf8');
