@@ -1,116 +1,164 @@
-import createHttpError from 'http-errors';
-import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import createHttpError from 'http-errors';
 import { User } from '../models/user.js';
+import { Session } from '../models/session.js';
+import { createSession } from '../services/sessionService.js';
+import { setSessionCookies, clearSessionCookies } from '../utils/cookies.js';
 import { sendEmail } from '../utils/sendMail.js';
-import { createSession, setSessionCookies } from '../services/auth.js';
-import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import handlebars from 'handlebars';
 
-dotenv.config();
-const { JWT_SECRET, FRONTEND_DOMAIN } = process.env;
+const { JWT_SECRET, SMTP_FROM } = process.env;
 
-// 🟢 Реєстрація нового користувача
+/**
+ * 🔐 Реєстрація нового користувача
+ */
 export const registerUser = async (req, res, next) => {
   try {
-    const { email, password, username } = req.body;
+    const { email, password } = req.body;
+
     const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      throw createHttpError(409, 'User already exists');
-    }
+    if (existingUser) throw createHttpError(409, 'Email already in use');
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = await User.create({ email, password: hashedPassword, username });
+    const user = await User.create({ email, password: hashedPassword });
 
-    res.status(201).json({ message: 'User registered successfully', user: { email: newUser.email, username: newUser.username } });
-  } catch (err) {
-    next(err);
+    // ✅ створити сесію та встановити куки
+    const session = await createSession(user._id);
+    setSessionCookies(res, session);
+
+    res.status(201).json({
+      user: { id: user._id, email: user.email },
+    });
+  } catch (error) {
+    next(error);
   }
 };
 
-// 🟢 Логін користувача
+/**
+ * 🔑 Вхід користувача
+ */
 export const loginUser = async (req, res, next) => {
   try {
     const { email, password } = req.body;
+
     const user = await User.findOne({ email });
-    if (!user) throw createHttpError(401, 'Invalid credentials');
+    if (!user) throw createHttpError(401, 'Invalid email or password');
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) throw createHttpError(401, 'Invalid credentials');
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) throw createHttpError(401, 'Invalid email or password');
 
+    // 🧹 видалити попередні сесії користувача
+    await Session.deleteMany({ userId: user._id });
+
+    // ✅ створити нову сесію
     const session = await createSession(user._id);
-    setSessionCookies(res, session.accessToken, session.refreshToken);
+    setSessionCookies(res, session);
 
-    res.json({ message: 'Login successful' });
-  } catch (err) {
-    next(err);
+    res.json({
+      user: { id: user._id, email: user.email },
+    });
+  } catch (error) {
+    next(error);
   }
 };
 
-// 🟢 Вихід користувача
+/**
+ * 🚪 Вихід користувача
+ */
 export const logoutUser = async (req, res, next) => {
   try {
-    res.clearCookie('accessToken');
-    res.clearCookie('refreshToken');
-    res.status(200).json({ message: 'Logged out successfully' });
-  } catch (err) {
-    next(err);
+    const { sessionId } = req.cookies;
+
+    if (sessionId) {
+      await Session.findByIdAndDelete(sessionId);
+    }
+
+    // 🧹 очистити куки
+    clearSessionCookies(res);
+
+    res.status(204).end();
+  } catch (error) {
+    next(error);
   }
 };
 
-// 🟢 Оновлення сесії
+/**
+ * 🔄 Оновлення сесії
+ */
 export const refreshUserSession = async (req, res, next) => {
   try {
-    const { refreshToken } = req.cookies;
-    if (!refreshToken) throw createHttpError(401, 'Missing refresh token');
+    const { sessionId, refreshToken } = req.cookies;
+    if (!sessionId || !refreshToken) throw createHttpError(401, 'Not authorized');
 
-    const payload = jwt.verify(refreshToken, JWT_SECRET);
-    const session = await createSession(payload.sub);
-    setSessionCookies(res, session.accessToken, session.refreshToken);
+    const oldSession = await Session.findById(sessionId);
+    if (!oldSession || oldSession.refreshToken !== refreshToken) {
+      throw createHttpError(401, 'Invalid session');
+    }
 
-    res.json({ message: 'Session refreshed' });
-  } catch (err) {
-    next(err);
+    // ❌ видалити стару сесію
+    await Session.findByIdAndDelete(sessionId);
+
+    // ✅ створити нову
+    const newSession = await createSession(oldSession.userId);
+    setSessionCookies(res, newSession);
+
+    res.status(200).json({ message: 'Session refreshed' });
+  } catch (error) {
+    next(error);
   }
 };
 
-// 🟢 Запит на email для скидання пароля
+/**
+ * ✉️ Надсилання листа для скидання паролю
+ */
 export const requestResetEmail = async (req, res, next) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
 
-    if (!user) return res.status(200).json({ message: 'Password reset email sent successfully' });
+    // 🔒 захист від user enumeration
+    if (!user) return res.status(200).json({ message: 'If user exists, email sent' });
 
-    const token = jwt.sign({ sub: user._id.toString(), email: user.email }, JWT_SECRET, { expiresIn: '15m' });
-    const resetLink = `${FRONTEND_DOMAIN.replace(/\/$/, '')}/reset-password?token=${token}`;
+    const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: '15m' });
+
+    // 📨 підготовка шаблону
+    const templatePath = path.resolve('src/templates/resetPassword.html');
+    const source = fs.readFileSync(templatePath, 'utf8');
+    const compiled = handlebars.compile(source);
+    const html = compiled({ resetLink: `${process.env.FRONTEND_URL}/reset-password?token=${token}` });
 
     await sendEmail({
       to: user.email,
-      subject: 'Password reset',
-      templateName: 'reset-password-email',
-      templateData: { username: user.username || user.email, resetLink },
+      subject: 'Password Reset',
+      html,
+      from: SMTP_FROM,
     });
 
-    res.status(200).json({ message: 'Password reset email sent successfully' });
-  } catch (err) {
-    next(err);
+    res.status(200).json({ message: 'If user exists, email sent' });
+  } catch (error) {
+    next(error);
   }
 };
 
-// 🟢 Скидання пароля
+/**
+ * 🔁 Скидання паролю
+ */
 export const resetPassword = async (req, res, next) => {
   try {
     const { token, password } = req.body;
-    const payload = jwt.verify(token, JWT_SECRET);
 
-    const user = await User.findById(payload.sub);
-    if (!user) throw createHttpError(404, 'User not found');
+    const payload = jwt.verify(token, JWT_SECRET);
+    const user = await User.findOne({ _id: payload.id, email: payload.email });
+    if (!user) throw createHttpError(400, 'Invalid or expired token');
 
     user.password = await bcrypt.hash(password, 10);
     await user.save();
 
-    res.status(200).json({ message: 'Password reset successfully' });
-  } catch (err) {
-    next(err);
+    res.status(200).json({ message: 'Password has been reset successfully' });
+  } catch (error) {
+    next(error);
   }
 };
